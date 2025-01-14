@@ -19,6 +19,7 @@
 #include "whisper-utils/silero-vad-onnx.h"
 #include "whisper-utils/whisper-processing.h"
 #include "whisper-utils/token-buffer-thread.h"
+#include "translation/cloud-translation/translation-cloud.h"
 
 #define MAX_PREPROC_CHANNELS 10
 
@@ -87,11 +88,17 @@ struct transcription_filter_data {
 	bool partial_transcription = false;
 	int partial_latency = 1000;
 	float duration_filter_threshold = 2.25f;
+	// Duration of the target segment buffer in ms
 	int segment_duration = 7000;
 
-	// Last transcription result
-	std::string last_text_for_translation;
-	std::string last_text_translation;
+	// Cloud translation options
+	bool translate_cloud = false;
+	CloudTranslatorConfig translate_cloud_config;
+	std::string translate_cloud_target_language;
+	std::string translate_cloud_output;
+	bool translate_cloud_only_full_sentences = true;
+	std::string last_text_for_cloud_translation;
+	std::string last_text_cloud_translation;
 
 	// Transcription context sentences
 	int n_context_sentences;
@@ -119,6 +126,9 @@ struct transcription_filter_data {
 	std::string translation_model_index;
 	std::string translation_model_path_external;
 	bool translate_only_full_sentences;
+	// Last transcription result
+	std::string last_text_for_translation;
+	std::string last_text_translation;
 
 	bool buffered_output = false;
 	TokenBufferThread captions_monitor;

@@ -8,6 +8,7 @@
 #include "transcription-filter-utils.h"
 #include "whisper-utils/whisper-language.h"
 #include "whisper-utils/vad-processing.h"
+#include "whisper-utils/whisper-params.h"
 #include "model-utils/model-downloader-types.h"
 #include "translation/language_codes.h"
 #include "ui/filter-replace-dialog.h"
@@ -15,6 +16,7 @@
 
 #include <string>
 #include <vector>
+#include "whisper-utils/whisper-utils.h"
 
 bool translation_options_callback(obs_properties_t *props, obs_property_t *property,
 				  obs_data_t *settings)
@@ -43,6 +45,53 @@ bool translation_options_callback(obs_properties_t *props, obs_property_t *prope
 	return true;
 }
 
+bool translation_cloud_provider_selection_callback(obs_properties_t *props, obs_property_t *p,
+						   obs_data_t *s)
+{
+	UNUSED_PARAMETER(p);
+	const char *provider = obs_data_get_string(s, "translate_cloud_provider");
+	// show the access key for all except the custom provider
+	obs_property_set_visible(obs_properties_get(props, "translate_cloud_api_key"),
+				 strcmp(provider, "api") != 0);
+	obs_property_set_visible(obs_properties_get(props, "translate_cloud_deepl_free"),
+				 strcmp(provider, "deepl") == 0);
+	// show the secret key input for the papago provider only
+	obs_property_set_visible(obs_properties_get(props, "translate_cloud_secret_key"),
+				 strcmp(provider, "papago") == 0);
+	// show the region input for the azure provider only
+	obs_property_set_visible(obs_properties_get(props, "translate_cloud_region"),
+				 strcmp(provider, "azure") == 0);
+	// show the endpoint and body input for the custom provider only
+	obs_property_set_visible(obs_properties_get(props, "translate_cloud_endpoint"),
+				 strcmp(provider, "api") == 0);
+	obs_property_set_visible(obs_properties_get(props, "translate_cloud_body"),
+				 strcmp(provider, "api") == 0);
+	// show the response json path input for the custom provider only
+	obs_property_set_visible(obs_properties_get(props, "translate_cloud_response_json_path"),
+				 strcmp(provider, "api") == 0);
+	return true;
+}
+
+bool translation_cloud_options_callback(obs_properties_t *props, obs_property_t *property,
+					obs_data_t *settings)
+{
+	UNUSED_PARAMETER(property);
+	// Show/Hide the cloud translation group options
+	const bool translate_enabled = obs_data_get_bool(settings, "translate_cloud");
+	for (const auto &prop :
+	     {"translate_cloud_provider", "translate_cloud_target_language",
+	      "translate_cloud_output", "translate_cloud_api_key",
+	      "translate_cloud_only_full_sentences", "translate_cloud_secret_key",
+	      "translate_cloud_deepl_free", "translate_cloud_region", "translate_cloud_endpoint",
+	      "translate_cloud_body", "translate_cloud_response_json_path"}) {
+		obs_property_set_visible(obs_properties_get(props, prop), translate_enabled);
+	}
+	if (translate_enabled) {
+		translation_cloud_provider_selection_callback(props, NULL, settings);
+	}
+	return true;
+}
+
 bool advanced_settings_callback(obs_properties_t *props, obs_property_t *property,
 				obs_data_t *settings)
 {
@@ -55,6 +104,7 @@ bool advanced_settings_callback(obs_properties_t *props, obs_property_t *propert
 		obs_property_set_visible(obs_properties_get(props, prop_name.c_str()), show_hide);
 	}
 	translation_options_callback(props, NULL, settings);
+	translation_cloud_options_callback(props, NULL, settings);
 	return true;
 }
 
@@ -174,12 +224,112 @@ void add_transcription_group_properties(obs_properties_t *ppts,
 	obs_property_set_modified_callback2(whisper_models_list, external_model_file_selection, gf);
 }
 
+void add_translation_cloud_group_properties(obs_properties_t *ppts)
+{
+	// add translation cloud group
+	obs_properties_t *translation_cloud_group = obs_properties_create();
+	obs_property_t *translation_cloud_group_prop =
+		obs_properties_add_group(ppts, "translate_cloud", MT_("translate_cloud"),
+					 OBS_GROUP_CHECKABLE, translation_cloud_group);
+
+	obs_property_set_modified_callback(translation_cloud_group_prop,
+					   translation_cloud_options_callback);
+
+	// add explaination text
+	obs_properties_add_text(translation_cloud_group, "translate_cloud_explaination",
+				MT_("translate_cloud_explaination"), OBS_TEXT_INFO);
+
+	// add cloud translation service provider selection
+	obs_property_t *prop_translate_cloud_provider = obs_properties_add_list(
+		translation_cloud_group, "translate_cloud_provider",
+		MT_("translate_cloud_provider"), OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	// Populate the dropdown with the cloud translation service providers
+	obs_property_list_add_string(prop_translate_cloud_provider, MT_("Google-Cloud-Translation"),
+				     "google");
+	obs_property_list_add_string(prop_translate_cloud_provider, MT_("Microsoft-Translator"),
+				     "azure");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("Amazon-Translate"),
+	// 			     "amazon-translate");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("IBM-Watson-Translate"),
+	// 			     "ibm-watson-translate");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("Yandex-Translate"),
+	// 			     "yandex-translate");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("Baidu-Translate"),
+	// 			     "baidu-translate");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("Tencent-Translate"),
+	// 			     "tencent-translate");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("Alibaba-Translate"),
+	// 			     "alibaba-translate");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("Naver-Translate"),
+	// 			     "naver-translate");
+	// obs_property_list_add_string(prop_translate_cloud_provider, MT_("Kakao-Translate"),
+	// 			     "kakao-translate");
+	obs_property_list_add_string(prop_translate_cloud_provider, MT_("Papago-Translate"),
+				     "papago");
+	obs_property_list_add_string(prop_translate_cloud_provider, MT_("Deepl-Translate"),
+				     "deepl");
+	obs_property_list_add_string(prop_translate_cloud_provider, MT_("OpenAI-Translate"),
+				     "openai");
+	obs_property_list_add_string(prop_translate_cloud_provider, MT_("Claude-Translate"),
+				     "claude");
+	obs_property_list_add_string(prop_translate_cloud_provider, MT_("API-Translate"), "api");
+
+	// add callback to show/hide the free API option for deepl
+	obs_property_set_modified_callback(prop_translate_cloud_provider,
+					   translation_cloud_provider_selection_callback);
+
+	// add target language selection
+	obs_property_t *prop_tgt = obs_properties_add_list(
+		translation_cloud_group, "translate_cloud_target_language", MT_("target_language"),
+		OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	// Populate the dropdown with the language codes
+	for (const auto &language : language_codes) {
+		obs_property_list_add_string(prop_tgt, language.second.c_str(),
+					     language.first.c_str());
+	}
+	// add option for routing the translation to an output source
+	obs_property_t *prop_output = obs_properties_add_list(
+		translation_cloud_group, "translate_cloud_output", MT_("translate_output"),
+		OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(prop_output, "Write to captions output", "none");
+	obs_enum_sources(add_sources_to_list, prop_output);
+
+	// add boolean option for only full sentences
+	obs_properties_add_bool(translation_cloud_group, "translate_cloud_only_full_sentences",
+				MT_("translate_cloud_only_full_sentences"));
+
+	// add input for API Key
+	obs_properties_add_text(translation_cloud_group, "translate_cloud_api_key",
+				MT_("translate_cloud_api_key"), OBS_TEXT_DEFAULT);
+	// add input for secret key
+	obs_properties_add_text(translation_cloud_group, "translate_cloud_secret_key",
+				MT_("translate_cloud_secret_key"), OBS_TEXT_PASSWORD);
+
+	// add boolean option for free API from deepl
+	obs_properties_add_bool(translation_cloud_group, "translate_cloud_deepl_free",
+				MT_("translate_cloud_deepl_free"));
+
+	// add translate_cloud_region for azure
+	obs_properties_add_text(translation_cloud_group, "translate_cloud_region",
+				MT_("translate_cloud_region"), OBS_TEXT_DEFAULT);
+
+	// add input for API endpoint
+	obs_properties_add_text(translation_cloud_group, "translate_cloud_endpoint",
+				MT_("translate_cloud_endpoint"), OBS_TEXT_DEFAULT);
+	// add input for API body
+	obs_properties_add_text(translation_cloud_group, "translate_cloud_body",
+				MT_("translate_cloud_body"), OBS_TEXT_MULTILINE);
+	// add input for json response path
+	obs_properties_add_text(translation_cloud_group, "translate_cloud_response_json_path",
+				MT_("translate_cloud_response_json_path"), OBS_TEXT_DEFAULT);
+}
+
 void add_translation_group_properties(obs_properties_t *ppts)
 {
 	// add translation option group
 	obs_properties_t *translation_group = obs_properties_create();
 	obs_property_t *translation_group_prop = obs_properties_add_group(
-		ppts, "translate", MT_("translate"), OBS_GROUP_CHECKABLE, translation_group);
+		ppts, "translate", MT_("translate_local"), OBS_GROUP_CHECKABLE, translation_group);
 
 	// add explaination text
 	obs_properties_add_text(translation_group, "translate_explaination",
@@ -355,6 +505,7 @@ void add_advanced_group_properties(obs_properties_t *ppts, struct transcription_
 	obs_property_t *vad_mode_list =
 		obs_properties_add_list(advanced_config_group, "vad_mode", MT_("vad_mode"),
 					OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
+	obs_property_list_add_int(vad_mode_list, MT_("No_VAD"), VAD_MODE_DISABLED);
 	obs_property_list_add_int(vad_mode_list, MT_("Active_VAD"), VAD_MODE_ACTIVE);
 	obs_property_list_add_int(vad_mode_list, MT_("Hybrid_VAD"), VAD_MODE_HYBRID);
 	// add vad threshold slider
@@ -402,82 +553,6 @@ void add_logging_group_properties(obs_properties_t *ppts)
 	obs_property_list_add_int(list, "DEBUG (Won't show)", LOG_DEBUG);
 	obs_property_list_add_int(list, "INFO", LOG_INFO);
 	obs_property_list_add_int(list, "WARNING", LOG_WARNING);
-}
-
-void add_whisper_params_group_properties(obs_properties_t *ppts)
-{
-	obs_properties_t *whisper_params_group = obs_properties_create();
-	obs_properties_add_group(ppts, "whisper_params_group", MT_("whisper_parameters"),
-				 OBS_GROUP_NORMAL, whisper_params_group);
-
-	obs_property_t *whisper_sampling_method_list = obs_properties_add_list(
-		whisper_params_group, "whisper_sampling_method", MT_("whisper_sampling_method"),
-		OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_INT);
-	obs_property_list_add_int(whisper_sampling_method_list, "Beam search",
-				  WHISPER_SAMPLING_BEAM_SEARCH);
-	obs_property_list_add_int(whisper_sampling_method_list, "Greedy", WHISPER_SAMPLING_GREEDY);
-
-	// add int slider for context sentences
-	obs_properties_add_int_slider(whisper_params_group, "n_context_sentences",
-				      MT_("n_context_sentences"), 0, 5, 1);
-
-	// int n_threads;
-	obs_properties_add_int_slider(whisper_params_group, "n_threads", MT_("n_threads"), 1, 8, 1);
-	// int n_max_text_ctx;     // max tokens to use from past text as prompt for the decoder
-	obs_properties_add_int_slider(whisper_params_group, "n_max_text_ctx", MT_("n_max_text_ctx"),
-				      0, 16384, 100);
-	// int offset_ms;          // start offset in ms
-	// int duration_ms;        // audio duration to process in ms
-	// bool translate;
-	obs_properties_add_bool(whisper_params_group, "whisper_translate",
-				MT_("whisper_translate"));
-	// bool no_context;        // do not use past transcription (if any) as initial prompt for the decoder
-	obs_properties_add_bool(whisper_params_group, "no_context", MT_("no_context"));
-	// bool single_segment;    // force single segment output (useful for streaming)
-	obs_properties_add_bool(whisper_params_group, "single_segment", MT_("single_segment"));
-	// bool print_special;     // print special tokens (e.g. <SOT>, <EOT>, <BEG>, etc.)
-	obs_properties_add_bool(whisper_params_group, "print_special", MT_("print_special"));
-	// bool print_progress;    // print progress information
-	obs_properties_add_bool(whisper_params_group, "print_progress", MT_("print_progress"));
-	// bool print_realtime;    // print results from within whisper.cpp (avoid it, use callback instead)
-	obs_properties_add_bool(whisper_params_group, "print_realtime", MT_("print_realtime"));
-	// bool print_timestamps;  // print timestamps for each text segment when printing realtime
-	obs_properties_add_bool(whisper_params_group, "print_timestamps", MT_("print_timestamps"));
-	// bool  token_timestamps; // enable token-level timestamps
-	obs_properties_add_bool(whisper_params_group, "token_timestamps", MT_("token_timestamps"));
-	// enable DTW timestamps
-	obs_properties_add_bool(whisper_params_group, "dtw_token_timestamps",
-				MT_("dtw_token_timestamps"));
-	// float thold_pt;         // timestamp token probability threshold (~0.01)
-	obs_properties_add_float_slider(whisper_params_group, "thold_pt", MT_("thold_pt"), 0.0f,
-					1.0f, 0.05f);
-	// float thold_ptsum;      // timestamp token sum probability threshold (~0.01)
-	obs_properties_add_float_slider(whisper_params_group, "thold_ptsum", MT_("thold_ptsum"),
-					0.0f, 1.0f, 0.05f);
-	// int   max_len;          // max segment length in characters
-	obs_properties_add_int_slider(whisper_params_group, "max_len", MT_("max_len"), 0, 100, 1);
-	// bool  split_on_word;    // split on word rather than on token (when used with max_len)
-	obs_properties_add_bool(whisper_params_group, "split_on_word", MT_("split_on_word"));
-	// int   max_tokens;       // max tokens per segment (0 = no limit)
-	obs_properties_add_int_slider(whisper_params_group, "max_tokens", MT_("max_tokens"), 0, 100,
-				      1);
-	// const char * initial_prompt;
-	obs_properties_add_text(whisper_params_group, "initial_prompt", MT_("initial_prompt"),
-				OBS_TEXT_DEFAULT);
-	// bool suppress_blank
-	obs_properties_add_bool(whisper_params_group, "suppress_blank", MT_("suppress_blank"));
-	// bool suppress_non_speech_tokens
-	obs_properties_add_bool(whisper_params_group, "suppress_non_speech_tokens",
-				MT_("suppress_non_speech_tokens"));
-	// float temperature
-	obs_properties_add_float_slider(whisper_params_group, "temperature", MT_("temperature"),
-					0.0f, 1.0f, 0.05f);
-	// float max_initial_ts
-	obs_properties_add_float_slider(whisper_params_group, "max_initial_ts",
-					MT_("max_initial_ts"), 0.0f, 1.0f, 0.05f);
-	// float length_penalty
-	obs_properties_add_float_slider(whisper_params_group, "length_penalty",
-					MT_("length_penalty"), -1.0f, 1.0f, 0.1f);
 }
 
 void add_general_group_properties(obs_properties_t *ppts)
@@ -541,6 +616,7 @@ obs_properties_t *transcription_filter_properties(void *data)
 	add_general_group_properties(ppts);
 	add_transcription_group_properties(ppts, gf);
 	add_translation_group_properties(ppts);
+	add_translation_cloud_group_properties(ppts);
 	add_file_output_group_properties(ppts);
 	add_buffered_output_group_properties(ppts);
 	add_advanced_group_properties(ppts, gf);
@@ -586,6 +662,11 @@ void transcription_filter_defaults(obs_data_t *s)
 	obs_data_set_default_int(s, "min_sub_duration", 1000);
 	obs_data_set_default_int(s, "max_sub_duration", 3000);
 	obs_data_set_default_bool(s, "advanced_settings", false);
+	obs_data_set_default_double(s, "sentence_psum_accept_thresh", 0.4);
+	obs_data_set_default_bool(s, "partial_group", true);
+	obs_data_set_default_int(s, "partial_latency", 1100);
+
+	// translation options
 	obs_data_set_default_bool(s, "translate", false);
 	obs_data_set_default_string(s, "translate_target_language", "__es__");
 	obs_data_set_default_int(s, "translate_add_context", 1);
@@ -593,11 +674,6 @@ void transcription_filter_defaults(obs_data_t *s)
 	obs_data_set_default_string(s, "translate_model", "whisper-based-translation");
 	obs_data_set_default_string(s, "translation_model_path_external", "");
 	obs_data_set_default_int(s, "translate_input_tokenization_style", INPUT_TOKENIZAION_M2M100);
-	obs_data_set_default_double(s, "sentence_psum_accept_thresh", 0.4);
-	obs_data_set_default_bool(s, "partial_group", true);
-	obs_data_set_default_int(s, "partial_latency", 1100);
-
-	// translation options
 	obs_data_set_default_double(s, "translation_sampling_temperature", 0.1);
 	obs_data_set_default_double(s, "translation_repetition_penalty", 2.0);
 	obs_data_set_default_int(s, "translation_beam_size", 1);
@@ -605,29 +681,23 @@ void transcription_filter_defaults(obs_data_t *s)
 	obs_data_set_default_int(s, "translation_no_repeat_ngram_size", 1);
 	obs_data_set_default_int(s, "translation_max_input_length", 65);
 
+	// cloud translation options
+	obs_data_set_default_bool(s, "translate_cloud", false);
+	obs_data_set_default_string(s, "translate_cloud_provider", "google");
+	obs_data_set_default_string(s, "translate_cloud_target_language", "en");
+	obs_data_set_default_string(s, "translate_cloud_output", "none");
+	obs_data_set_default_bool(s, "translate_cloud_only_full_sentences", true);
+	obs_data_set_default_string(s, "translate_cloud_api_key", "");
+	obs_data_set_default_string(s, "translate_cloud_secret_key", "");
+	obs_data_set_default_bool(s, "translate_cloud_deepl_free", true);
+	obs_data_set_default_string(s, "translate_cloud_region", "eastus");
+	obs_data_set_default_string(s, "translate_cloud_endpoint",
+				    "http://localhost:5000/translate");
+	obs_data_set_default_string(
+		s, "translate_cloud_body",
+		"{\n\t\"text\":\"{{sentence}}\",\n\t\"target\":\"{{target_language}}\"\n}");
+	obs_data_set_default_string(s, "translate_cloud_response_json_path", "translations.0.text");
+
 	// Whisper parameters
-	obs_data_set_default_int(s, "whisper_sampling_method", WHISPER_SAMPLING_BEAM_SEARCH);
-	obs_data_set_default_int(s, "n_context_sentences", 0);
-	obs_data_set_default_string(s, "initial_prompt", "");
-	obs_data_set_default_int(s, "n_threads", 4);
-	obs_data_set_default_int(s, "n_max_text_ctx", 16384);
-	obs_data_set_default_bool(s, "whisper_translate", false);
-	obs_data_set_default_bool(s, "no_context", true);
-	obs_data_set_default_bool(s, "single_segment", true);
-	obs_data_set_default_bool(s, "print_special", false);
-	obs_data_set_default_bool(s, "print_progress", false);
-	obs_data_set_default_bool(s, "print_realtime", false);
-	obs_data_set_default_bool(s, "print_timestamps", false);
-	obs_data_set_default_bool(s, "token_timestamps", false);
-	obs_data_set_default_bool(s, "dtw_token_timestamps", false);
-	obs_data_set_default_double(s, "thold_pt", 0.01);
-	obs_data_set_default_double(s, "thold_ptsum", 0.01);
-	obs_data_set_default_int(s, "max_len", 0);
-	obs_data_set_default_bool(s, "split_on_word", true);
-	obs_data_set_default_int(s, "max_tokens", 50);
-	obs_data_set_default_bool(s, "suppress_blank", false);
-	obs_data_set_default_bool(s, "suppress_non_speech_tokens", false);
-	obs_data_set_default_double(s, "temperature", 0.1);
-	obs_data_set_default_double(s, "max_initial_ts", 1.0);
-	obs_data_set_default_double(s, "length_penalty", -1.0);
+	apply_whisper_params_defaults_on_settings(s);
 }
