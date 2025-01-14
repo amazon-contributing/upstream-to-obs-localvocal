@@ -55,6 +55,11 @@ jobs:
               echo 'prerelease=true' >> $GITHUB_OUTPUT
               echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
               ;;
+            +([0-9]).+([0-9]).+([0-9])-webvtt.*
+              echo 'validTag=true' >> $GITHUB_OUTPUT
+              echo 'prerelease=true' >> $GITHUB_OUTPUT
+              echo "version=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+              ;;
             *) echo 'validTag=false' >> $GITHUB_OUTPUT ;;
           esac
 
