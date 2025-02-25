@@ -212,15 +212,25 @@ struct transcription_filter_data {
 		Recording,
 	};
 
+	struct webvtt_to_video_timestamp {
+		int64_t pts;
+		uint64_t composition_timestamp;
+	};
+
+	struct webvtt_video_time_anchor {
+		std::deque<webvtt_to_video_timestamp> last_two_if_not_initialized;
+		std::optional<webvtt_to_video_timestamp> anchor;
+	};
+
 	struct webvtt_output {
 		OBSWeakOutputAutoRelease output;
 		webvtt_output_type output_type;
-		uint64_t start_timestamp_ms;
 
 		bool initialized = false;
 		std::map<std::string, uint8_t> language_to_track;
 		std::unique_ptr<WebvttMuxer, webvtt_muxer_deleter>
 			webvtt_muxer[MAX_OUTPUT_VIDEO_ENCODERS];
+		webvtt_video_time_anchor time_anchors[MAX_OUTPUT_VIDEO_ENCODERS];
 		CodecFlavor codec_flavor[MAX_OUTPUT_VIDEO_ENCODERS] = {};
 	};
 

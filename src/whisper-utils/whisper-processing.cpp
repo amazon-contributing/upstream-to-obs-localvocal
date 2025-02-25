@@ -2,6 +2,7 @@
 
 #include <obs-module.h>
 
+#include <util/platform.h>
 #include <util/profiler.hpp>
 
 #include "plugin-support.h"
@@ -341,7 +342,7 @@ void run_inference_and_callbacks(transcription_filter_data *gf, uint64_t start_o
 				    pcm32f_size * sizeof(float));
 	}
 
-	auto inference_start_ts = now_ms();
+	auto inference_start_ts = os_gettime_ns();
 
 	struct DetectionResultWithText inference_result =
 		run_whisper_inference(gf, pcm32f_data, pcm32f_size_with_silence, start_offset_ms,
