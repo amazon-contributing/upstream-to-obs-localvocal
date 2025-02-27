@@ -246,18 +246,12 @@ impl<W: Write + ?Sized> WebvttWrite for H265RbspWriter<W> {
     fn write_webvtt_payload(
         &mut self,
         track_index: u8,
-        chunk_number: u64,
-        chunk_version: u8,
+        subtitle_version: u8,
         video_offset: Duration,
         webvtt_payload: &str, // TODO: replace with string type that checks for interior NULs
     ) -> std::io::Result<()> {
-        self.0.write_webvtt_payload(
-            track_index,
-            chunk_number,
-            chunk_version,
-            video_offset,
-            webvtt_payload,
-        )
+        self.0
+            .write_webvtt_payload(track_index, subtitle_version, video_offset, webvtt_payload)
     }
 }
 
@@ -335,18 +329,11 @@ mod tests {
         .unwrap();
         let mut payload_writer = nalu_writer.write_nal_header(nal_header).unwrap();
         let track_index = 0;
-        let chunk_number = 1;
-        let chunk_version = 0;
+        let subtitle_version = 0;
         let video_offset = Duration::from_millis(200);
         let webvtt_payload = "Some unverified data";
         payload_writer
-            .write_webvtt_payload(
-                track_index,
-                chunk_number,
-                chunk_version,
-                video_offset,
-                webvtt_payload,
-            )
+            .write_webvtt_payload(track_index, subtitle_version, video_offset, webvtt_payload)
             .unwrap();
         payload_writer.finish_rbsp().unwrap();
 
@@ -364,15 +351,14 @@ mod tests {
                 break;
             }
         }
-        assert!(dbg!(length + 1) == dbg!(reader.clone().bytes().count()));
+        assert!(length + 1 == reader.clone().bytes().count());
         reader.read_u128::<BigEndian>().unwrap();
         assert!(track_index == reader.read_u8().unwrap());
-        assert!(chunk_number == reader.read_u64::<BigEndian>().unwrap());
-        assert!(chunk_version == reader.read_u8().unwrap());
         assert!(
             u16::try_from(video_offset.as_millis()).unwrap()
                 == reader.read_u16::<BigEndian>().unwrap()
         );
+        assert!(subtitle_version == reader.read_u8().unwrap());
         println!("{writer:02x?}");
     }
 
@@ -392,21 +378,14 @@ mod tests {
         .unwrap();
         let mut payload_writer = nalu_writer.write_nal_header(nal_header).unwrap();
         let track_index = 0;
-        let chunk_number = 1;
-        let chunk_version = 0;
+        let subtitle_version = 0;
         let video_offset = Duration::from_millis(200);
         let webvtt_payload = "Some unverified data";
         payload_writer
-            .write_webvtt_payload(
-                track_index,
-                chunk_number,
-                chunk_version,
-                video_offset,
-                webvtt_payload,
-            )
+            .write_webvtt_payload(track_index, subtitle_version, video_offset, webvtt_payload)
             .unwrap();
         payload_writer
-            .write_webvtt_payload(1, 1, 0, video_offset, "Something else")
+            .write_webvtt_payload(1, 0, video_offset, "Something else")
             .unwrap();
         payload_writer.finish_rbsp().unwrap();
 
@@ -426,12 +405,11 @@ mod tests {
         }
         reader.read_u128::<BigEndian>().unwrap();
         assert!(track_index == reader.read_u8().unwrap());
-        assert!(chunk_number == reader.read_u64::<BigEndian>().unwrap());
-        assert!(chunk_version == reader.read_u8().unwrap());
         assert!(
             u16::try_from(video_offset.as_millis()).unwrap()
                 == reader.read_u16::<BigEndian>().unwrap()
         );
+        assert!(subtitle_version == reader.read_u8().unwrap());
         println!("{writer:02x?}");
     }
 }

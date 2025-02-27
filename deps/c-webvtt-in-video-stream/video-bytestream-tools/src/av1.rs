@@ -283,24 +283,21 @@ impl<W: Write + ?Sized> WebvttWrite for OBUWriter<W> {
     fn write_webvtt_payload(
         &mut self,
         track_index: u8,
-        chunk_number: u64,
-        chunk_version: u8,
+        subtitle_version: u8,
         video_offset: Duration,
         webvtt_payload: &str, // TODO: replace with string type that checks for interior NULs
     ) -> std::io::Result<()> {
         fn inner<W: ?Sized + Write>(
             writer: &mut W,
             track_index: u8,
-            chunk_number: u64,
-            chunk_version: u8,
+            subtitle_version: u8,
             video_offset: Duration,
             webvtt_payload: &str,
         ) -> std::io::Result<()> {
             write_webvtt_payload(
                 writer,
                 track_index,
-                chunk_number,
-                chunk_version,
+                subtitle_version,
                 video_offset,
                 webvtt_payload,
                 |write, _size| {
@@ -313,8 +310,7 @@ impl<W: Write + ?Sized> WebvttWrite for OBUWriter<W> {
         inner(
             &mut count,
             track_index,
-            chunk_number,
-            chunk_version,
+            subtitle_version,
             video_offset,
             webvtt_payload,
         )?;
@@ -327,11 +323,35 @@ impl<W: Write + ?Sized> WebvttWrite for OBUWriter<W> {
         inner(
             &mut self.0,
             track_index,
-            chunk_number,
-            chunk_version,
+            subtitle_version,
             video_offset,
             webvtt_payload,
         )?;
         self.finish_payload()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        av1::OBUWriter,
+        webvtt::{WebvttWrite, PAYLOAD_GUID},
+    };
+    use std::time::Duration;
+
+    #[test]
+    fn check_webvtt_metadata_obu() {
+        let mut buffer = vec![];
+        let mut obu_writer = OBUWriter::new(&mut buffer);
+        let track_index = 0;
+        let subtitle_version = 0;
+        let video_offset = Duration::from_millis(200);
+        let webvtt_payload = "Some unverified data";
+        obu_writer
+            .write_webvtt_payload(track_index, subtitle_version, video_offset, webvtt_payload)
+            .unwrap();
+        println!("av1 {buffer:02x?}");
+        assert!(&buffer[3..19] == PAYLOAD_GUID.as_bytes());
+        assert!(&buffer[23..43] == webvtt_payload.as_bytes());
     }
 }

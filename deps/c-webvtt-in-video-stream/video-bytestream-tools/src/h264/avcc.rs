@@ -131,17 +131,11 @@ impl<W: Write + ?Sized> WebvttWrite for AVCCRbspWriter<W> {
     fn write_webvtt_payload(
         &mut self,
         track_index: u8,
-        chunk_number: u64,
-        chunk_version: u8,
+        subtitle_version: u8,
         video_offset: Duration,
         webvtt_payload: &str, // TODO: replace with string type that checks for interior NULs
     ) -> std::io::Result<()> {
-        self.0.write_webvtt_payload(
-            track_index,
-            chunk_number,
-            chunk_version,
-            video_offset,
-            webvtt_payload,
-        )
+        self.0
+            .write_webvtt_payload(track_index, subtitle_version, video_offset, webvtt_payload)
     }
 }
