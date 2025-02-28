@@ -234,7 +234,7 @@ void send_caption_to_stream(DetectionResultWithText result, const std::string &s
 }
 
 #ifdef ENABLE_WEBVTT
-void send_caption_to_webvtt(uint64_t possible_end_ts_ms, DetectionResultWithText result,
+void send_caption_to_webvtt(uint64_t possible_end_ts_ns, DetectionResultWithText result,
 			    const std::string &str_copy, transcription_filter_data &gf)
 {
 	auto lock = std::unique_lock(gf.active_outputs_mutex);
@@ -255,14 +255,27 @@ void send_caption_to_webvtt(uint64_t possible_end_ts_ms, DetectionResultWithText
 			if (!muxer)
 				continue;
 
+			auto &anchor = output.time_anchors[i];
+			if (!anchor.anchor)
+				return;
+
+			auto output_start_ts_ns = anchor.anchor->composition_timestamp;
+			if (possible_end_ts_ns < output_start_ts_ns)
+				return;
+
+			auto output_start_ts = output_start_ts_ns / 1'000'000;
+
 			auto duration = result.end_timestamp_ms - result.start_timestamp_ms;
-			auto segment_start_ts = possible_end_ts_ms - duration;
-			if (segment_start_ts < output.start_timestamp_ms) {
-				duration -= output.start_timestamp_ms - segment_start_ts;
-				segment_start_ts = output.start_timestamp_ms;
+			auto segment_start_ts = possible_end_ts_ns / 1'000'000 - duration;
+
+			if (segment_start_ts < output_start_ts) {
+				auto diff = output_start_ts - segment_start_ts;
+				duration = diff > duration ? 0 : (duration - diff);
+				segment_start_ts = output_start_ts;
 			}
+
 			webvtt_muxer_add_cue(muxer.get(), lang_to_track->second,
-					     segment_start_ts - output.start_timestamp_ms, duration,
+					     (segment_start_ts - output_start_ts), duration,
 					     str_copy.c_str());
 		}
 	}
@@ -500,8 +513,51 @@ void output_packet_added_callback(obs_output_t *output, struct encoder_packet *p
 	if (!muxer)
 		return;
 
+	auto &time_anchor = it->time_anchors[pkt->track_idx];
+	if (!time_anchor.anchor) {
+		// CTS can repeat if there are
+		// 1) lagged frames (composition thread wasn't fast enough)
+		// 2) duplicated frames (encoder couldn't keep up)
+		// this is trying to find a frame that is neither lagged nor duplicated, to ensure a stable mapping from composition time to PTS
+		auto new_end = std::remove_if(
+			time_anchor.last_two_if_not_initialized.begin(),
+			time_anchor.last_two_if_not_initialized.end(),
+			[&](auto &val) { return val.composition_timestamp == pkt_time->cts; });
+		if (new_end != time_anchor.last_two_if_not_initialized.end())
+			time_anchor.last_two_if_not_initialized.erase(
+				new_end, time_anchor.last_two_if_not_initialized.end());
+
+		if (time_anchor.last_two_if_not_initialized.size() == 2) {
+			time_anchor.anchor = time_anchor.last_two_if_not_initialized.back();
+			time_anchor.last_two_if_not_initialized.clear();
+		} else {
+			time_anchor.last_two_if_not_initialized.push_back({
+				pkt->pts,
+				pkt_time->cts,
+			});
+		}
+	}
+
+	auto encoder = obs_output_get_video_encoder2(output, pkt->track_idx);
+	if (!encoder)
+		return;
+
+	auto video = obs_encoder_video(encoder);
+	auto voi = video_output_get_info(video);
+	if (!voi)
+		return;
+
+	uint64_t packet_absolute_timestamp = 0;
+	// time for subtitles only starts progressing once we have an anchor point
+	if (time_anchor.anchor && time_anchor.anchor->pts <= pkt->pts) {
+		packet_absolute_timestamp =
+			util_mul_div64(1000000000ULL, voi->fps_den, voi->fps_num) *
+			(pkt->pts - time_anchor.anchor->pts);
+	}
+
 	std::unique_ptr<WebvttBuffer, webvtt_buffer_deleter> buffer{
-		webvtt_muxer_try_mux_into_bytestream(muxer.get(), pkt_time->cts, pkt->keyframe,
+		webvtt_muxer_try_mux_into_bytestream(muxer.get(), packet_absolute_timestamp,
+						     pkt->keyframe,
 						     it->codec_flavor[pkt->track_idx])};
 
 	if (!buffer)
@@ -540,14 +596,11 @@ void add_webvtt_output(transcription_filter_data &gf, obs_output_t *output,
 	    output_type == transcription_filter_data::webvtt_output_type::Streaming)
 		return;
 
-	auto start_ms = now_ms();
-
 	auto lock = std::unique_lock(gf.active_outputs_mutex);
 	gf.active_outputs.push_back({});
 	auto &entry = gf.active_outputs.back();
 	entry.output = obs_output_get_weak_output(output);
 	entry.output_type = output_type;
-	entry.start_timestamp_ms = start_ms;
 	obs_output_add_packet_callback_(output, output_packet_added_callback, &gf);
 }
 

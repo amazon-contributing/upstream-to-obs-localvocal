@@ -5,7 +5,7 @@ use uuid::{uuid, Uuid};
 
 pub const USER_DATA_UNREGISTERED: usize = 5;
 pub const HEADER_GUID: Uuid = uuid!("cc7124bd-5f1c-4592-b27a-e2d9d218ef9e");
-pub const PAYLOAD_GUID: Uuid = uuid!("a0cb4dd1-9db2-4635-a76b-1c9fefd6c37b");
+pub const PAYLOAD_GUID: Uuid = uuid!("bab739cd-58ee-4510-b11c-4de4e1b8b0eb");
 
 trait WriteCStrExt: Write {
     fn write_c_str(&mut self, string: &str) -> std::io::Result<()> {
@@ -120,8 +120,7 @@ pub(crate) fn write_webvtt_header<W: Write + ?Sized>(
 pub(crate) fn write_webvtt_payload<W: Write + ?Sized>(
     writer: &mut W,
     track_index: u8,
-    chunk_number: u64,
-    chunk_version: u8,
+    subtitle_version: u8,
     video_offset: Duration,
     webvtt_payload: &str, // TODO: replace with string type that checks for interior NULs
     write_format_header: impl FnOnce(&mut W, usize) -> std::io::Result<()>,
@@ -129,16 +128,14 @@ pub(crate) fn write_webvtt_payload<W: Write + ?Sized>(
     fn inner<W: ?Sized + Write>(
         writer: &mut W,
         track_index: u8,
-        chunk_number: u64,
-        chunk_version: u8,
+        subtitle_version: u8,
         video_offset: Duration,
         webvtt_payload: &str,
     ) -> std::io::Result<()> {
         writer.write_all(PAYLOAD_GUID.as_bytes())?;
         writer.write_u8(track_index)?;
-        writer.write_u64::<BigEndian>(chunk_number)?;
-        writer.write_u8(chunk_version)?;
         writer.write_u16::<BigEndian>(video_offset.as_millis().try_into().unwrap())?;
+        writer.write_u8(subtitle_version)?;
         writer.write_c_str(webvtt_payload)?;
         Ok(())
     }
@@ -147,8 +144,7 @@ pub(crate) fn write_webvtt_payload<W: Write + ?Sized>(
     inner(
         &mut count,
         track_index,
-        chunk_number,
-        chunk_version,
+        subtitle_version,
         video_offset,
         webvtt_payload,
     )?;
@@ -156,8 +152,7 @@ pub(crate) fn write_webvtt_payload<W: Write + ?Sized>(
     inner(
         writer,
         track_index,
-        chunk_number,
-        chunk_version,
+        subtitle_version,
         video_offset,
         webvtt_payload,
     )
@@ -174,8 +169,7 @@ pub trait WebvttWrite {
     fn write_webvtt_payload(
         &mut self,
         track_index: u8,
-        chunk_number: u64,
-        chunk_version: u8,
+        subtitle_version: u8,
         video_offset: Duration,
         webvtt_payload: &str, // TODO: replace with string type that checks for interior NULs
     ) -> std::io::Result<()>;

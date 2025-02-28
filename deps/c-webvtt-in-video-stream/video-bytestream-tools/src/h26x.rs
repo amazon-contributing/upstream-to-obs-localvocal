@@ -112,16 +112,14 @@ impl<W: Write + ?Sized> WebvttWrite for RbspWriter<W> {
     fn write_webvtt_payload(
         &mut self,
         track_index: u8,
-        chunk_number: u64,
-        chunk_version: u8,
+        subtitle_version: u8,
         video_offset: Duration,
         webvtt_payload: &str, // TODO: replace with string type that checks for interior NULs
     ) -> std::io::Result<()> {
         write_webvtt_payload(
             self,
             track_index,
-            chunk_number,
-            chunk_version,
+            subtitle_version,
             video_offset,
             webvtt_payload,
             |writer, size| write_sei_header(writer, USER_DATA_UNREGISTERED, size),

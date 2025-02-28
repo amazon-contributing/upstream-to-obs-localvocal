@@ -183,29 +183,16 @@ impl WebvttMuxer {
 
         buffer.clear();
 
-        for cue in &*cues {
-            if cue.start_time > (timestamp + duration) {
-                break;
-            }
-            let cue_start = if cue.start_time > timestamp {
-                cue.start_time
-            } else {
-                timestamp
-            };
-            let cue_end = (cue.start_time + cue.duration).min(timestamp + duration);
-            buffer.push_str(&format!(
-                "{:0>2}:{:0>2}:{:0>2}.{:0>3} --> {:0>2}:{:0>2}:{:0>2}.{:0>3}\n{}\n\n",
-                cue_start.as_secs() / 3600,
-                cue_start.as_secs() % 3600 / 60,
-                cue_start.as_secs() % 60,
-                cue_start.as_millis() % 1000,
-                cue_end.as_secs() / 3600,
-                cue_end.as_secs() % 3600 / 60,
-                cue_end.as_secs() % 60,
-                cue_end.as_millis() % 1000,
-                cue.text.0
-            ))
+        let newest_matching_cue = cues
+            .iter()
+            .take_while(|cue| {
+                cue.start_time <= timestamp || cue.start_time <= (timestamp + duration)
+            })
+            .last();
+        if let Some(cue) = newest_matching_cue {
+            buffer.push_str(&cue.text.0);
         }
+
         buffer.as_str()
     }
 
@@ -254,7 +241,6 @@ impl WebvttMuxer {
         if next_chunk_video_timestamp > video_timestamp + self.video_frame_time * 2 {
             return Ok(add_header);
         }
-        let chunk_number = *next_chunk_number;
         // TODO: return an error type that allows skipping chunks if the writer fails?
         for (track_index, track) in tracks.iter_mut().enumerate() {
             let webvtt_payload = Self::consume_cues_into_chunk(
@@ -265,7 +251,6 @@ impl WebvttMuxer {
             );
             writer.write_webvtt_payload(
                 u8::try_from(track_index).unwrap(),
-                chunk_number,
                 0,
                 video_timestamp - (*first_video_timestamp + next_chunk_webvtt_timestamp),
                 webvtt_payload,
