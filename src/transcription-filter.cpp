@@ -614,12 +614,20 @@ obs_output_remove_packet_callback_t *obs_output_remove_packet_callback_ = nullpt
 
 void load_packet_callback_functions()
 {
+#ifdef _WIN32
 	auto libobs = os_dlopen("obs");
+#elif defined(__APPLE__)
+	auto libobs = os_dlopen("libobs.framework/libobs");
+#else
+	auto libobs = os_dlopen("libobs");
+#endif
 	if (!libobs)
 		return;
 
 	auto add_callback = os_dlsym(libobs, "obs_output_add_packet_callback");
 	auto remove_callback = os_dlsym(libobs, "obs_output_remove_packet_callback");
+	os_dlclose(libobs);
+
 	if (!add_callback || !remove_callback)
 		return;
 
