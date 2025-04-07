@@ -231,6 +231,10 @@ impl WebvttMuxer {
             )?;
         }
 
+        if tracks.is_empty() {
+            return Ok(add_header);
+        }
+
         let duration_between_sends =
             Duration::from_secs_f64(1. / f64::from(self.send_frequency_hz));
         let first_video_timestamp = &*first_video_timestamp.get_or_insert(video_timestamp);
